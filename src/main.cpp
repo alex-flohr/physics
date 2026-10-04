@@ -1,45 +1,11 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "sim.h"
 #include <GLFW/glfw3.h>
 #include <cmath>
 
-struct Ball {
-  float x = 0.0f, y = 4.0f;    // meters
-  float vx = 2.0f, vy = 0.0f;  // m/s
-  float radius = 0.3f;         // meters
-};
-
-struct World {
-  float gravity = -9.81f;      // m/s^2
-  float restitution = 0.85f;   // energy kept per bounce
-  float halfWidth = 5.0f;      // world spans [-halfWidth, halfWidth]
-  float height = 6.0f;         // world spans [0, height]
-};
-
-void step(Ball& b, const World& w, float dt) {
-  b.vy += w.gravity * dt;
-  b.x += b.vx * dt;
-  b.y += b.vy * dt;
-
-  if (b.y - b.radius < 0.0f) {
-    b.y = b.radius;
-    b.vy = -b.vy * w.restitution;
-  }
-  if (b.y + b.radius > w.height) {
-    b.y = w.height - b.radius;
-    b.vy = -b.vy * w.restitution;
-  }
-  if (b.x - b.radius < -w.halfWidth) {
-    b.x = -w.halfWidth + b.radius;
-    b.vx = -b.vx * w.restitution;
-  }
-  if (b.x + b.radius > w.halfWidth) {
-    b.x = w.halfWidth - b.radius;
-    b.vx = -b.vx * w.restitution;
-  }
-}
-
+/*
 void drawBall(const Ball& b) {
   constexpr int segments = 48;
   constexpr float twoPi = 6.28318530718f;
@@ -52,6 +18,7 @@ void drawBall(const Ball& b) {
   }
   glEnd();
 }
+  */
 
 int main() {
   if (!glfwInit())
@@ -75,12 +42,14 @@ int main() {
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   ImGui_ImplOpenGL3_Init("#version 130");
 
-  World world;
-  Ball ball;
-  const Ball initial = ball;
+  
+
   double last = glfwGetTime();
   double accumulator = 0.0;
   constexpr double fixedDt = 1.0 / 240.0;
+  Sim sim;
+  sim.addBody(Body{0.0f, 5.0f, 0.0f, -0.0018f, 10.0f, 1.0f});
+  sim.addBody(Body{3.0f, 5.0f, 0.0f, 1.826f, 0.01f, 0.3f});
 
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
@@ -88,21 +57,21 @@ int main() {
     double now = glfwGetTime();
     accumulator += std::fmin(now - last, 0.1);
     last = now;
-    while (accumulator >= fixedDt) {
-      step(ball, world, static_cast<float>(fixedDt));
-      accumulator -= fixedDt;
-    }
 
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
     ImGui::Begin("Physics");
-    ImGui::SliderFloat("Gravity", &world.gravity, -20.0f, 0.0f, "%.2f m/s^2");
-    ImGui::SliderFloat("Ball radius", &ball.radius, 0.1f, 2.5f, "%.2f m");
-    ImGui::SliderFloat("Restitution", &world.restitution, 0.0f, 1.0f);
-    if (ImGui::Button("Reset"))
-      ball = initial;
+
+    while (accumulator >= fixedDt) {
+      sim.update(static_cast<float>(fixedDt));
+      accumulator -= fixedDt;
+    }
+    ImGui::SliderFloat("B1 mass", &sim.bodies[0].mass, 0.0f, 20.0f, "%.2f kg");
+    ImGui::SliderFloat("B1 radius", &sim.bodies[0].radius, 0.1f, 2.5f, "%.2f m");
+    ImGui::SliderFloat("B2 mass", &sim.bodies[1].mass, 0.0f, 20.0f, "%.2f kg");
+    ImGui::SliderFloat("B2 radius", &sim.bodies[1].radius, 0.1f, 2.5f, "%.2f m");
     ImGui::End();
 
     ImGui::Render();
@@ -114,7 +83,7 @@ int main() {
 
     // Fit the world into the window, preserving aspect ratio.
     float aspect = fbh > 0 ? static_cast<float>(fbw) / fbh : 1.0f;
-    float viewH = world.height;
+    constexpr float viewH = 10.0f;
     float viewW = viewH * aspect;
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -122,7 +91,7 @@ int main() {
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    drawBall(ball);
+    sim.draw();
 
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     glfwSwapBuffers(window);
